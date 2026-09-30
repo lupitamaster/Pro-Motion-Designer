@@ -1,0 +1,29 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>composition</title>
+<style>
+  /* Declare the brand's licensed fonts here once they are in /fonts, e.g.:
+     @font-face { font-family: 'Display'; src: url('../../fonts/Display-Variable.ttf'); font-weight: 200 800; }
+     A comma in a file name must be URL-encoded (%2C). */
+  html, body { margin: 0; width: var(--W, 1920px); height: var(--H, 1080px); overflow: hidden; }
+  #bg { position: absolute; inset: 0; }
+  #world { position: absolute; left: 0; top: 0; width: var(--W, 1920px); height: var(--H, 1080px); transform-origin: 0 0; }
+  #overlay { position: absolute; inset: 0; overflow: hidden; }
+  * { box-sizing: border-box; }
+  .abs { position: absolute; }
+  .hid { visibility: hidden; }
+  #world *, #overlay * { visibility: inherit; }   /* hidden containers hide their children */
+  #world .hid, #overlay .hid { visibility: hidden; } /* ...and .hid still wins over that rule until vis() shows it */
+  .mask, .clip { overflow: hidden; }
+  .em { font-style: italic; }
+</style>
+</head>
+<body>
+<div id="bg"></div>
+<div id="world"></div>
+<div id="overlay"></div>
+<script type="module" src="main.js"></script>
+</body>
+</html>

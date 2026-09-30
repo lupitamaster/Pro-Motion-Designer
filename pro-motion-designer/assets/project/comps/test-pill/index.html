@@ -1,0 +1,35 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; width: 1920px; height: 1080px; background: #fafaf8; overflow: hidden; }
+  #shape { position: absolute; left: 50%; top: 50%; background: #000; }
+</style>
+</head>
+<body>
+<div id="shape"></div>
+<script type="module">
+  import { spring, lerp, LAND, MORPH } from '../../lib/spring.js';
+
+  window.COMP = { width: 1920, height: 1080, fps: 60, duration: 2 };
+
+  const shape = document.getElementById('shape');
+  const H = 200;         // circle diameter = pill height
+  const PILL_W = 820;
+
+  window.seek = (t) => {
+    // 1) circle pops in (bouncy), 2) stretches into a pill (softer spring), offset 0.45s
+    const grow = spring(t - 0.1, LAND);
+    const stretch = spring(t - 0.55, MORPH);
+    const size = H * grow;
+    const w = lerp(size, PILL_W, stretch);
+    shape.style.width = `${w}px`;
+    shape.style.height = `${size}px`;
+    shape.style.borderRadius = `${size / 2}px`;
+    shape.style.transform = 'translate(-50%, -50%)';
+  };
+  window.seek(0);
+</script>
+</body>
+</html>

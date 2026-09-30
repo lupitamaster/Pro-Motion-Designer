@@ -1,0 +1,12 @@
+{
+  "name": "product-film",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "render": "node studio/render.mjs",
+    "stills": "node studio/render.mjs comps/main/index.html --stills 0.5,2.5,5,7.9"
+  },
+  "devDependencies": {
+    "playwright": "^1.50.0"
+  }
+}
