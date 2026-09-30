@@ -31,7 +31,7 @@ Ask everything at once (group it, don't drip-feed). Read `references/intake.md` 
 Output: `brand/INTAKE.md` summarising answers + open questions.
 
 ### 2. Environment setup
-Run `python <skill>/scripts/check_env.py` — it reports Node, npm, Python packages, ffmpeg, Playwright/Chromium and prints the install command for this OS. Install what's missing (tell the user what you're installing; system package managers like winget/brew/apt may need their OK). Then scaffold the project:
+Run `python <skill>/scripts/check_env.py` — it reports Node, npm, Python packages, ffmpeg, Playwright/Chromium and prints the install command for this OS. Install what's missing (tell the user what you're installing; system package managers like winget/brew/apt may need their OK). `sudo` commands need the user's password, and Claude Code's `!` prefix can't pass it on: ask the user to run them in their own terminal. If the check says this Python is externally managed (PEP 668), put the Python packages in a venv in the project folder, as the check prints, and run every `studio/*.py` with `.venv/bin/python` (`.venv\Scripts\python` on Windows) instead of `python`. Then scaffold the project:
 
 ```bash
 python <skill>/scripts/new_project.py --dir <project-folder> --name <slug> --size 1920x1080 --fps 60 --duration 48
