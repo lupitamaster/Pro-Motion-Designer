@@ -72,8 +72,9 @@ for n in range(nbeats):
 # ------------------------------------------------------------------ motion rules
 ev = json.loads(Path(timeline).read_text(encoding='utf8'))['events']
 cams = sorted([e for e in ev if e['type'] == 'camera'], key=lambda e: e['t'])
-overlap = [(a['t'], b['t']) for a, b in zip(cams, cams[1:]) if b['t'] < a['end'] - 1e-6]
-offgrid = [e['t'] for e in cams if abs(e['t'] / BEAT - round(e['t'] / BEAT)) > 1e-6]
+# ev() rounds times to 4 decimals (older timelines left 'end' exact): compare with that tolerance
+overlap = [(a['t'], b['t']) for a, b in zip(cams, cams[1:]) if b['t'] < a['end'] - 1e-4]
+offgrid = [e['t'] for e in cams if abs(e['t'] - round(e['t'] / BEAT) * BEAT) > 1e-4]
 (bad if overlap else ok)(f'camera: {len(cams)} moves, none overlapping' + (f' (overlaps {overlap})' if overlap else ''))
 (ok if not offgrid else warn)('camera moves start on a beat' + (f' (off-grid: {offgrid})' if offgrid else ''))
 
