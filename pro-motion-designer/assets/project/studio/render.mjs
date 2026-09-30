@@ -32,8 +32,9 @@ const server = createServer(async (req, res) => {
   try {
     const f = path.join(root, decodeURIComponent(new URL(req.url, 'http://x').pathname));
     if (!f.startsWith(root)) throw new Error('outside root');
+    const body = await readFile(f); // read first: a missing file must 404, not throw after the headers went out
     res.writeHead(200, { 'content-type': types[path.extname(f)] ?? 'application/octet-stream' });
-    res.end(await readFile(f));
+    res.end(body);
   } catch { res.writeHead(404).end(); }
 }).listen(0, '127.0.0.1');
 await new Promise((r) => server.once('listening', r));
