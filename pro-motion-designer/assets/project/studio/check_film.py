@@ -4,7 +4,9 @@
 
 Checks (reads project.json for fps, bpm, sfx files and the brand lint):
   video   every frame: no cuts (>40% of pixels change at once), no single-frame pops (change > 3x
-          its neighbours), no frozen stretch > 1 s, visible change on every beat
+          its neighbours), no frozen stretch > 1 s, visible change on every beat; small elements that
+          switch on/off in one frame (warning: a region changes for good in 1-2 frames while
+          everything around it is still)
   motion  camera moves never overlap and start on a beat; LAND/MORPH overshoot 2-8% and settle in a beat;
           no opacity/blur animation in the composition code
   sound   every click/whoosh/chime/impact event has a sound whose peak lands within 1 frame (verified by
@@ -72,10 +74,62 @@ for n in range(nbeats):
 # ------------------------------------------------------------------ motion rules
 ev = json.loads(Path(timeline).read_text(encoding='utf8'))['events']
 cams = sorted([e for e in ev if e['type'] == 'camera'], key=lambda e: e['t'])
-overlap = [(a['t'], b['t']) for a, b in zip(cams, cams[1:]) if b['t'] < a['end'] - 1e-6]
-offgrid = [e['t'] for e in cams if abs(e['t'] / BEAT - round(e['t'] / BEAT)) > 1e-6]
+# ev() rounds times to 4 decimals (older timelines left 'end' exact): compare with that tolerance
+overlap = [(a['t'], b['t']) for a, b in zip(cams, cams[1:]) if b['t'] < a['end'] - 1e-4]
+offgrid = [e['t'] for e in cams if abs(e['t'] - round(e['t'] / BEAT) * BEAT) > 1e-4]
 (bad if overlap else ok)(f'camera: {len(cams)} moves, none overlapping' + (f' (overlaps {overlap})' if overlap else ''))
 (ok if not offgrid else warn)('camera moves start on a beat' + (f' (off-grid: {offgrid})' if offgrid else ''))
+
+
+def local_pops(fr, skip, cell=6, big=40, min_px=40, min_last=25):
+    """Small elements that appear/vanish in one frame: the whole-frame pop test above can't see them
+    (a 32 px label is ~0.1% of the frame). A region is a pop when it changes within 1-2 frames (motion
+    blur splits a switch across two), the area around it is still 3 frames before and after (so it isn't
+    a moving edge, flood or riser), and the change lasts (so it isn't something passing through or
+    edges shimmering under a camera move). Typed characters appear in one frame on purpose: skipped."""
+    chg = np.abs(np.diff(fr, axis=0)) > big
+    n, h, w = chg.shape
+    gy, gx = h // cell, w // cell
+    cnt = chg[:, :gy * cell, :gx * cell].reshape(n, gy, cell, gx, cell).sum(axis=(2, 4))
+    act = cnt >= 3
+
+    def grow(m):
+        o = m.copy(); o[1:] |= m[:-1]; o[:-1] |= m[1:]; o[:, 1:] |= m[:, :-1]; o[:, :-1] |= m[:, 1:]
+        return o
+    found = []
+    for j in range(3, n - 4):
+        if not act[j].any() or j + 1 in skip:
+            continue
+        both = act[j] | act[j + 1]
+        lab = np.zeros(both.shape, int)
+        for y, x in zip(*np.where(act[j])):
+            if lab[y, x]:
+                continue
+            lab[y, x] = k = lab.max() + 1
+            stack = [(y, x)]
+            while stack:
+                a, b = stack.pop()
+                for p, q in ((a + 1, b), (a - 1, b), (a, b + 1), (a, b - 1)):
+                    if 0 <= p < gy and 0 <= q < gx and both[p, q] and not lab[p, q]:
+                        lab[p, q] = k; stack.append((p, q))
+        for k in range(1, lab.max() + 1):
+            cl = lab == k
+            if cnt[j][cl].sum() + cnt[j + 1][cl].sum() < min_px:
+                continue
+            ring = grow(grow(cl))
+            if act[j - 3:j][:, ring].any() or act[j + 2:j + 5][:, ring].any() or both[ring & ~cl].any():
+                continue
+            m = np.zeros((h, w), bool); m[:gy * cell, :gx * cell] = np.kron(cl, np.ones((cell, cell), bool))
+            if np.abs(fr[j + 4] - fr[j - 1])[m].mean() >= min_last:
+                ys, xs = np.where(cl)
+                found.append((j + 1, xs.mean() * cell * st['width'] / w, ys.mean() * cell * st['height'] / h))
+    return found
+
+
+typed = {round(c * FPS) + d for e in ev if e['type'] == 'type' for c in e.get('chars', []) for d in (-1, 0, 1)}
+lp = local_pops(fr, typed)
+(ok if not lp else warn)(f'no small elements switching on/off in one frame: {len(lp)}' + ''.join(
+    f'\n          t={i / FPS:.3f}s  near x={x:.0f} y={y:.0f}  (look at these frames: shrink/rise/cover it instead)' for i, x, y in lp[:15]))
 
 
 def spring(t, k, c):

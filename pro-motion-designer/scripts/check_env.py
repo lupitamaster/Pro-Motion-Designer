@@ -13,8 +13,13 @@ import platform
 import shutil
 import subprocess
 import sys
+import sysconfig
+from pathlib import Path
 
 OS = platform.system()  # 'Windows' | 'Darwin' | 'Linux'
+# PEP 668 (Ubuntu 24.04+, Debian 12+, Homebrew Python): pip refuses to install into this Python, even with --user.
+MANAGED = sys.prefix == sys.base_prefix and (Path(sysconfig.get_path('stdlib')) / 'EXTERNALLY-MANAGED').exists()
+VENV_PY = r'.venv\Scripts\python' if OS == 'Windows' else '.venv/bin/python'
 
 
 def run(cmd):
@@ -29,7 +34,10 @@ def install_hint(name):
     hints = {
         'node': {'Windows': 'winget install OpenJS.NodeJS.LTS', 'Darwin': 'brew install node', 'Linux': 'sudo apt install nodejs npm  (or use nvm)'},
         'ffmpeg': {'Windows': 'winget install Gyan.FFmpeg', 'Darwin': 'brew install ffmpeg', 'Linux': 'sudo apt install ffmpeg'},
-        'python-pkgs': {k: f'{sys.executable} -m pip install --user numpy pillow matplotlib' for k in ('Windows', 'Darwin', 'Linux')},
+        'python-pkgs': {k: (f'{sys.executable} -m venv .venv  then  {VENV_PY} -m pip install numpy pillow matplotlib'
+                            f'   (in the project folder; this Python is externally managed, so pip install --user is refused.'
+                            f' Run studio/*.py with {VENV_PY} from then on)' if MANAGED else
+                            f'{sys.executable} -m pip install --user numpy pillow matplotlib') for k in ('Windows', 'Darwin', 'Linux')},
         'playwright': {k: 'npm install   (in the project folder)  then  npx playwright install chromium' for k in ('Windows', 'Darwin', 'Linux')},
     }
     return hints[name].get(OS, hints[name]['Linux'])
@@ -57,6 +65,11 @@ def main():
         print(f"  {'OK  ' if ok else 'MISS'}  {d:<38} {f or ''}")
         if not ok:
             print(f'        install: {h}')
+    if any(not ok and 'sudo ' in h for _, ok, _, h in rows):
+        print('\nsudo asks for a password, which Claude Code\'s ! prefix can\'t pass on (no terminal): ask the user to run'
+              ' the sudo commands in their own terminal, then run this check again.')
+    if MANAGED and any(not ok and 'venv' in h for _, ok, _, h in rows):
+        print('\nIf `-m venv` fails on Debian/Ubuntu, the venv module is a separate package: sudo apt install python3-venv')
     if OS == 'Windows':
         print('\nWindows notes: run Python with PYTHONIOENCODING=utf8 if you print non-ASCII; ffmpeg on Windows has no glob input, use the sheet.py helper for contact sheets.')
 

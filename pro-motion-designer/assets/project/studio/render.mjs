@@ -1,25 +1,30 @@
 // Deterministic frame renderer: loads a composition, calls window.seek(t) per (sub)frame,
 // screenshots it and pipes PNGs into ffmpeg.
 // Run from the project root (the folder with project.json):
-//   node studio/render.mjs <comp.html> [out.mp4] [--subframes 4] [--shutter 0.5] [--workers 4]
+//   node studio/render.mjs <comp.html> [out.mp4] [--subframes 4] [--shutter 0.5] [--workers N]
 //   node studio/render.mjs <comp.html> --stills 0,5.5,12.25 [--outdir dir]   (PNG stills)
 //   node studio/render.mjs <comp.html> [out.mp4] --timeline-only            (sound edits: re-export events only)
 // Also writes <out>.timeline.json (window.TIMELINE) for mix_audio.py and check_film.py.
 // Motion blur: N subframes spread over `shutter` of a frame interval, centred on the frame
 // time, averaged with ffmpeg tmix. Workers render contiguous frame ranges in parallel.
+// Workers default to what fits in free RAM (each is a Chromium page + an x264 encoder, ~1 GB at 1080p;
+// too many crashed a 12 GB WSL machine) and never more than half the cores. Each encoder gets its share
+// of the cores: x264's default of 1.5 threads per core per encoder doubled memory for no speed gain
+// (the screenshots are the bottleneck).
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 
 const args = process.argv.slice(2);
 const opt = (k, d) => { const i = args.indexOf('--' + k); return i >= 0 ? args[i + 1] : d; };
 const positional = args.filter((a, i) => !a.startsWith('--') && !(i > 0 && args[i - 1].startsWith('--')));
 const comp = path.resolve(positional[0] ?? 'comps/main/index.html');
 const out = path.resolve(positional[1] ?? `out/${path.basename(path.dirname(comp))}.mp4`);
-const SUB = +opt('subframes', 1), SHUTTER = +opt('shutter', 0.5), WORKERS = +opt('workers', 1);
+const SUB = +opt('subframes', 1), SHUTTER = +opt('shutter', 0.5);
 const stills = opt('stills', null);
 mkdirSync(path.dirname(out), { recursive: true });
 
@@ -32,8 +37,9 @@ const server = createServer(async (req, res) => {
   try {
     const f = path.join(root, decodeURIComponent(new URL(req.url, 'http://x').pathname));
     if (!f.startsWith(root)) throw new Error('outside root');
+    const body = await readFile(f); // read first: a missing file must 404, not throw after the headers went out
     res.writeHead(200, { 'content-type': types[path.extname(f)] ?? 'application/octet-stream' });
-    res.end(await readFile(f));
+    res.end(body);
   } catch { res.writeHead(404).end(); }
 }).listen(0, '127.0.0.1');
 await new Promise((r) => server.once('listening', r));
@@ -75,6 +81,16 @@ if (args.includes('--timeline-only')) { // sound-only iterations: re-export wind
   const timeline = await first.evaluate(() => window.TIMELINE || []);
   writeFileSync(out.replace(/\.mp4$/, '.timeline.json'), JSON.stringify({ meta, events: timeline }, null, 1));
   await first.close();
+  // workers: what fits in free RAM, at most half the cores (--workers overrides, with a warning if it won't fit)
+  const GB = 2 ** 30, cores = os.cpus().length;
+  let free = os.freemem(); // Linux: MemAvailable counts reclaimable cache, MemFree doesn't
+  try { free = +readFileSync('/proc/meminfo', 'utf8').match(/MemAvailable:\s+(\d+)/)[1] * 1024; } catch {}
+  const each = 1.2 * GB * Math.max(1, (meta.width * meta.height) / (1920 * 1080));
+  const fit = Math.max(1, Math.floor((free - 1.5 * GB) / each));
+  const WORKERS = opt('workers') ? +opt('workers') : Math.min(fit, Math.max(1, Math.floor(cores / 2)));
+  const threads = Math.max(1, Math.floor(cores / WORKERS));
+  console.log(`workers ${WORKERS} (${cores} cores, ${(free / GB).toFixed(1)} GB free, ~${(each / GB).toFixed(1)} GB each), x264 threads ${threads}`);
+  if (WORKERS > fit) console.warn(`warning: ${WORKERS} workers need ~${(WORKERS * each / GB).toFixed(1)} GB; ${fit} fit in free RAM. Too many can crash the machine (WSL).`);
   const per = Math.ceil(frames / WORKERS);
   const segs = [];
   const t0 = Date.now(); let done = 0;
@@ -84,7 +100,7 @@ if (args.includes('--timeline-only')) { // sound-only iterations: re-export wind
     const seg = out.replace(/\.mp4$/, `.seg${w}.mp4`); segs[w] = seg;
     const vf = SUB > 1 ? ['-vf', `tmix=frames=${SUB},select='eq(mod(n\\,${SUB})\\,${SUB - 1})',setpts=N/(${fps}*TB)`] : [];
     const ff = spawn('ffmpeg', ['-y', '-v', 'error', '-f', 'image2pipe', '-framerate', String(fps * SUB), '-i', '-', ...vf,
-      '-r', String(fps), '-c:v', 'libx264', '-preset', 'slow', '-crf', '14', '-pix_fmt', 'yuv420p', seg], { stdio: ['pipe', 'inherit', 'inherit'] });
+      '-r', String(fps), '-c:v', 'libx264', '-threads', String(threads), '-preset', 'slow', '-crf', '14', '-pix_fmt', 'yuv420p', seg], { stdio: ['pipe', 'inherit', 'inherit'] });
     for (let i = a; i < b; i++) {
       for (let k = 0; k < SUB; k++) {
         const off = SUB > 1 ? (k - (SUB - 1) / 2) / SUB * SHUTTER : 0;

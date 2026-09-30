@@ -31,7 +31,7 @@ Ask everything at once (group it, don't drip-feed). Read `references/intake.md` 
 Output: `brand/INTAKE.md` summarising answers + open questions.
 
 ### 2. Environment setup
-Run `python <skill>/scripts/check_env.py` — it reports Node, npm, Python packages, ffmpeg, Playwright/Chromium and prints the install command for this OS. Install what's missing (tell the user what you're installing; system package managers like winget/brew/apt may need their OK). Then scaffold the project:
+Run `python <skill>/scripts/check_env.py` — it reports Node, npm, Python packages, ffmpeg, Playwright/Chromium and prints the install command for this OS. Install what's missing (tell the user what you're installing; system package managers like winget/brew/apt may need their OK). `sudo` commands need the user's password, and Claude Code's `!` prefix can't pass it on: ask the user to run them in their own terminal. If the check says this Python is externally managed (PEP 668), put the Python packages in a venv in the project folder, as the check prints, and run every `studio/*.py` with `.venv/bin/python` (`.venv\Scripts\python` on Windows) instead of `python`. Then scaffold the project:
 
 ```bash
 python <skill>/scripts/new_project.py --dir <project-folder> --name <slug> --size 1920x1080 --fps 60 --duration 48
@@ -77,11 +77,12 @@ Look at every sheet yourself and fix what's wrong before showing anything. ⛔ S
 
 ### 8. Render, mix, self-check
 ```bash
-node studio/render.mjs comps/<name>/index.html out/<name>.mp4 --subframes 4 --shutter 0.5 --workers <cores/2>
+node studio/render.mjs comps/<name>/index.html out/<name>.mp4 --subframes 4 --shutter 0.5
 python studio/mix_audio.py out/<name>.timeline.json out/<name>_mix.wav
 python studio/check_film.py out/<name>.mp4 out/<name>.timeline.json out/<name>_mix.wav comps/<name>
 ```
-`check_film.py` checks every frame (no cuts, no single-frame pops, no long freezes), motion on every beat, camera moves, spring presets, no fades in code, every click/whoosh has a sound whose peak lands on its event, SFX-vs-music balance, loudness, and the brand lint. Pops (reveals and landings) aren't covered by the automatic timing check: verify them with `studio/sync_probe.py` — reveals sound at their onset, landings at the impact, no two sounds within 150 ms. **Do not show the video until it passes.** When it fails, find the real cause (look at the frames around the timestamp), fix the composition, re-render. Then build a 2 fps contact sheet of the final and look at all of it.
+The renderer picks its worker count from free RAM and cores and prints it; leave `--workers` off unless you have a reason. Each worker (a Chromium page + an x264 encoder) needs ~1 GB at 1080p, and too many can crash the machine; WSL is the usual case, since it only gets part of the host's RAM. If a render dies, delete the leftover `out/<name>.seg*.mp4` files and render again with fewer workers.
+`check_film.py` checks every frame (no cuts, no single-frame pops, no long freezes; small elements that switch on or off in one frame are a warning — look at each and make it shrink, rise or be covered), motion on every beat, camera moves, spring presets, no fades in code, every click/whoosh has a sound whose peak lands on its event, SFX-vs-music balance, loudness, and the brand lint. Pops (reveals and landings) aren't covered by the automatic timing check: verify them with `studio/sync_probe.py` — reveals sound at their onset, landings at the impact, no two sounds within 150 ms. **Do not show the video until it passes.** When it fails, find the real cause (look at the frames around the timestamp), fix the composition, re-render. Then build a 2 fps contact sheet of the final and look at all of it.
 
 ### 9. Deliver ⛔
 Mux (`ffmpeg -i video -i mix -map 0:v -map 1:a -c:v copy -c:a aac -b:a 320k -shortest -movflags +faststart <Brand>_<format>_<dur>_v<n>.mp4`), send the file, and report in a short message: what it is, what was verified (the check report), decisions you took that they should review (content choices, anything risky vs the brief, skipped assets), and open questions. Offer next steps: other formats (re-laid out, not cropped), a handoff roadmap for their team, turning their project into a reusable kit.

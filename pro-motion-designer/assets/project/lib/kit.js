@@ -131,7 +131,7 @@ export function rise(r, t, tIn, tOut, p = LAND) {
 // ---------- camera: one move at a time; `set` only while the frame is fully covered ----------
 // entries: { at, set:{x,y,s} } | { start (beat), beats, to:{x?,y?,s?} }
 export function makeCamera(entries) {
-  for (const c of entries) if (!c.set) ev(bt(c.start), 'camera', 'camera', { end: bt(c.start + c.beats) });
+  for (const c of entries) if (!c.set) ev(bt(c.start), 'camera', 'camera', { end: +bt(c.start + c.beats).toFixed(4) }); // rounded like ev()'s t
   return (t) => {
     let s = { x: P.width / 2, y: P.height / 2, s: 1, ...(entries[0]?.set || {}) };
     for (const e of entries) {
