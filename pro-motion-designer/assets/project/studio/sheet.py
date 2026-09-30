@@ -8,7 +8,14 @@ cols = int(sys.argv[3]) if len(sys.argv) > 3 else 3
 per = int(sys.argv[4]) if len(sys.argv) > 4 else 9
 tw = int(sys.argv[5]) if len(sys.argv) > 5 else 640
 files = sorted(src.glob('*.png'))
-font = ImageFont.truetype('C:/Windows/Fonts/arial.ttf', 22)
+def _font(size):
+    for f in ('C:/Windows/Fonts/arial.ttf', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', '/System/Library/Fonts/Supplemental/Arial.ttf', '/Library/Fonts/Arial.ttf'):
+        try:
+            return ImageFont.truetype(f, size)
+        except OSError:
+            pass
+    return ImageFont.load_default()
+font = _font(22)
 for s in range(0, len(files), per):
     chunk = files[s:s + per]
     im0 = Image.open(chunk[0]); th = round(tw * im0.height / im0.width)  # keep the film's aspect (4:5, 9:16, 16:9)
