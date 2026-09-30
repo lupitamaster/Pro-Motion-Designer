@@ -77,10 +77,11 @@ Look at every sheet yourself and fix what's wrong before showing anything. ⛔ S
 
 ### 8. Render, mix, self-check
 ```bash
-node studio/render.mjs comps/<name>/index.html out/<name>.mp4 --subframes 4 --shutter 0.5 --workers <cores/2>
+node studio/render.mjs comps/<name>/index.html out/<name>.mp4 --subframes 4 --shutter 0.5
 python studio/mix_audio.py out/<name>.timeline.json out/<name>_mix.wav
 python studio/check_film.py out/<name>.mp4 out/<name>.timeline.json out/<name>_mix.wav comps/<name>
 ```
+The renderer picks its worker count from free RAM and cores and prints it; leave `--workers` off unless you have a reason. Each worker (a Chromium page + an x264 encoder) needs ~1 GB at 1080p, and too many can crash the machine; WSL is the usual case, since it only gets part of the host's RAM. If a render dies, delete the leftover `out/<name>.seg*.mp4` files and render again with fewer workers.
 `check_film.py` checks every frame (no cuts, no single-frame pops, no long freezes), motion on every beat, camera moves, spring presets, no fades in code, every click/whoosh has a sound whose peak lands on its event, SFX-vs-music balance, loudness, and the brand lint. Pops (reveals and landings) aren't covered by the automatic timing check: verify them with `studio/sync_probe.py` — reveals sound at their onset, landings at the impact, no two sounds within 150 ms. **Do not show the video until it passes.** When it fails, find the real cause (look at the frames around the timestamp), fix the composition, re-render. Then build a 2 fps contact sheet of the final and look at all of it.
 
 ### 9. Deliver ⛔
